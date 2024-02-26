@@ -78,3 +78,59 @@ In this example:
 Ensure you replace 'path/to/input.json' with the actual path to your input JSON file. This code will modify the specified entry in the JSON file and save the changes back to the same file.
 
 Remember to adjust the conditions and values in the update statement according to your specific requirements.
+
+## Interest
+
+Certainly! If your interest rates have start and end dates, you'll need to consider these date ranges when calculating the interest. Here's an example that takes into account the start and end dates of the interest rates:
+
+```SAS
+data balances;
+  input date date9. balance;
+  format date date9.;
+  datalines;
+01JAN2022 1000
+02JAN2022 1050
+03JAN2022 1100
+; /* Add more data as needed */
+run;
+
+data interest_rates;
+  input start_date date9. end_date date9. interest_rate;
+  format start_date end_date date9.;
+  datalines;
+01JAN2022 02JAN2022 0.02
+03JAN2022 05JAN2022 0.025
+; /* Add more data as needed */
+run;
+
+data interest_comparison;
+  merge balances interest_rates;
+  by date;
+
+  /* Check if the date is within the interest rate period */
+  if start_date <= date <= end_date then do;
+    /* Calculate interest with the original rate */
+    original_interest = balance * interest_rate;
+
+    /* Calculate interest with the new rate (adjust as needed) */
+    new_interest = balance * (interest_rate + 0.005); /* Example: Increase interest rate by 0.005 */
+
+    /* Calculate the difference in interest */
+    interest_difference = new_interest - original_interest;
+
+    output;
+  end;
+run;
+
+/* Print the new dataset */
+proc print data=interest_comparison;
+run;
+```
+
+In this example:
+
+- I added a dataset named interest_rates that includes start and end dates for each interest rate.
+- The merge statement is used to combine the balances and interest_rates datasets based on the common variable date.
+- The if statement checks if the date is within the interest rate period. If so, it calculates the interest with the original rate, new rate, and the difference in interest.
+
+Adjust the variable names and values in the calculation according to your specific dataset and requirements.
