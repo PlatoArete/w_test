@@ -1,30 +1,25 @@
-You're absolutely right! That's a good catch. When doing a merge in SAS, we can only use one BY statement, and the current code structure in Step 2 has issues with how we're trying to merge and create IDs.
-
-Let me correct this approach. Here's a revised version that properly handles the merge while still maintaining the same matching logic:
-
-```sas
 /* Step 1: Sort both datasets by account and date */
 proc sort data=charges;
-   by account_id charge_date;
+   by account_id charge_date charge_amount;
 run;
 
 proc sort data=refunds;
-   by account_id refund_date;
+   by account_id refund_date refund_amount;
 run;
 
 /* Step 2: Create unique IDs for charges and refunds separately */
 data charges_with_id;
    set charges;
-   by account_id charge_date;
+   by account_id charge_date charge_amount;
    if first.account_id then charge_id = 0;
-   if first.charge_date then charge_id + 1;
+   charge_id + 1; /* Increment for every charge record */
 run;
 
 data refunds_with_id;
    set refunds;
-   by account_id refund_date;
+   by account_id refund_date refund_amount;
    if first.account_id then refund_id = 0;
-   if first.refund_date then refund_id + 1;
+   refund_id + 1; /* Increment for every refund record */
 run;
 
 /* Step 3: Create all possible charge-refund pairs within the same account */
@@ -63,21 +58,43 @@ data matched_pairs;
       /* Neither has been matched yet, so create a match */
       matched_c{charge_id} = 'Y';
       matched_r{refund_id} = 'Y';
+      match_status = 'Matched';
       output; /* Output this match */
    end;
 run;
-```
 
-Key improvements in this version:
+/* Step 5: Identify all the charges that have been matched */
+proc sql;
+   create table matched_charge_ids as
+   select distinct account_id, charge_id
+   from matched_pairs;
+quit;
 
-1. I've separated the ID creation into distinct data steps for both datasets.
-2. I've used PROC SQL to create the cross join (cartesian product) between charges and refunds, which is cleaner for this purpose.
-3. The matching logic uses arrays to track which charges and refunds have been matched, which is more efficient than using hash tables in this context.
+/* Step 6: Get all unmatched charges and add them to the final dataset */
+proc sql;
+   create table unmatched_charges as
+   select a.account_id, a.charge_id, a.charge_date, a.charge_amount,
+          . as refund_id, /* Null value for refund_id */
+          . as refund_date format=date9., /* Null value for refund_date */
+          . as refund_amount, /* Null value for refund_amount */
+          . as days_between, /* Null value for days_between */
+          'Unmatched' as match_status
+   from charges_with_id a
+   where not exists (
+      select 1
+      from matched_charge_ids b
+      where a.account_id = b.account_id
+      and a.charge_id = b.charge_id
+   );
+quit;
 
-Note that the arrays in Step 4 have a fixed size (1000). You may need to adjust this based on the maximum number of transactions per account in your data.
+/* Step 7: Combine matched pairs and unmatched charges */
+data final_results;
+   set matched_pairs unmatched_charges;
+   by account_id;
+run;
 
-This approach properly handles:
-- Exact amount matching
-- Minimizing time between charge and refund
-- Multiple transactions per account, even on the same day
-- Proper SAS syntax for merges and joins
+/* Sort the final results for better readability */
+proc sort data=final_results;
+   by account_id charge_date refund_date;
+run;
