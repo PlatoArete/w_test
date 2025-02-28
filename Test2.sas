@@ -63,6 +63,33 @@ data matched_pairs;
    end;
 run;
 
+/* Step 4: Use a greedy approach with hash objects to match refunds to charges */
+data matched_pairs;
+   set all_pairs;
+   by account_id days_between;
+   
+   /* Declare hash objects to track matched charges and refunds */
+   if _N_ = 1 then do;
+      declare hash matched_charges();
+      matched_charges.definekey('account_id', 'charge_id');
+      matched_charges.definedone();
+      
+      declare hash matched_refunds();
+      matched_refunds.definekey('account_id', 'refund_id');
+      matched_refunds.definedone();
+   end;
+   
+   /* Check if this charge or refund has already been matched */
+   if matched_charges.find(key: account_id, key: charge_id) ne 0 and
+      matched_refunds.find(key: account_id, key: refund_id) ne 0 then do;
+      /* Neither has been matched yet, so create a match */
+      matched_charges.add(key: account_id, key: charge_id);
+      matched_refunds.add(key: account_id, key: refund_id);
+      match_status = 'Matched';
+      output; /* Output this match */
+   end;
+run;
+
 /* Step 5: Identify all the charges that have been matched */
 proc sql;
    create table matched_charge_ids as
