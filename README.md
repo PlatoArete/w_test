@@ -134,3 +134,86 @@ In this example:
 - The if statement checks if the date is within the interest rate period. If so, it calculates the interest with the original rate, new rate, and the difference in interest.
 
 Adjust the variable names and values in the calculation according to your specific dataset and requirements.
+
+### alchemy 
+
+To connect to Teradata with SQLAlchemy, you'll need to use a specific dialect. Here's how to set up the connection:
+
+First, you'll need to install the required packages:
+
+```python
+# Install required packages
+# pip install sqlalchemy teradatasqlalchemy
+```
+
+Here's a basic example of connecting to Teradata with SQLAlchemy:
+
+```python
+from sqlalchemy import create_engine, MetaData, Table, select
+from sqlalchemy.orm import sessionmaker
+
+# Connection parameters
+username = 'your_username'
+password = 'your_password'  # In production, use the secure password handling approach
+host = 'your_teradata_host'
+database = 'your_database'
+
+# Create the connection string for Teradata
+connection_string = f"teradatasql://{username}:{password}@{host}/{database}"
+
+# Create the engine
+engine = create_engine(connection_string)
+
+# Test the connection
+try:
+    connection = engine.connect()
+    print("Successfully connected to Teradata database!")
+    
+    # Example query
+    result = connection.execute("SELECT * FROM your_table SAMPLE 5")
+    for row in result:
+        print(row)
+    
+    connection.close()
+except Exception as e:
+    print(f"Error connecting to database: {e}")
+```
+
+If you want to incorporate the encrypted password approach we discussed earlier:
+
+```python
+from sqlalchemy import create_engine
+from cryptography.fernet import Fernet
+
+def get_db_password():
+    # Path to your encrypted password file
+    password_file = 'td_password.encrypted'
+    
+    # Load your encryption key
+    with open('encryption_key.key', 'rb') as key_file:
+        key = key_file.read()
+    
+    # Read the encrypted password
+    with open(password_file, 'rb') as file:
+        encrypted_password = file.read()
+    
+    # Decrypt the password
+    fernet = Fernet(key)
+    password = fernet.decrypt(encrypted_password).decode()
+    
+    return password
+
+# Connection parameters
+username = 'your_username'
+password = get_db_password()
+host = 'your_teradata_host'
+database = 'your_database'
+
+# Create connection string for Teradata
+connection_string = f"teradatasql://{username}:{password}@{host}/{database}"
+
+# Create engine
+engine = create_engine(connection_string)
+```
+
+Would you like more information about using SQLAlchemy with Teradata, such as executing specific queries or working with the ORM?
