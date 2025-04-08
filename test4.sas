@@ -1,79 +1,77 @@
-/* Sort both datasets */
-proc sort data=celq_dates; 
-   by cust delq_sdt delq_edt; 
-run;
-
-proc sort data=cint_dates; 
-   by cust cint2_sdt; 
-run;
-
-/* Step 1: Create a cross join of cint start dates with delinquency periods by customer */
-data work_cross;
-   merge cint_dates(in=a) celq_dates(in=b);
+/* Step 1: Transpose cint_dates to have all cint start dates as variables for each customer */
+proc transpose data=cint_dates out=cint_wide prefix=cint_date;
    by cust;
-   if a and b;
+   var cint2_sdt;
 run;
 
-/* Step 2: Filter to only relevant combinations */
-data work_mapping;
-   set work_cross;
-   /* Include combinations where:
-      - Delinquency starts on or after cint start date, OR
-      - Delinquency period overlaps cint start date */
-   if (delq_sdt >= cint2_sdt) or 
-      (delq_sdt < cint2_sdt and delq_edt >= cint2_sdt) then output;
+/* Step 2: Join the transposed cint dates with delinquency periods */
+data work_step2;
+   merge cint_wide delq_dates;
+   by cust;
+   
+   /* Find the most relevant cint start date for this delinquency period */
+   relevant_cint_date = .;
+   array cint_dates{*} cint_date:;
+   
+   do i = 1 to dim(cint_dates);
+      if cint_dates[i] ne . and 
+         cint_dates[i] <= delq_edt and
+         (relevant_cint_date = . or cint_dates[i] > relevant_cint_date) then do;
+         relevant_cint_date = cint_dates[i];
+      end;
+   end;
+   
+   /* Only keep records with a relevant cint date */
+   if relevant_cint_date ne . then do;
+      cint2_sdt = relevant_cint_date;
+      keep cust delq_sdt delq_edt cint2_sdt;
+      output;
+   end;
+   
+   format cint2_sdt date9.;
 run;
 
 /* Step 3: Sort for processing */
-proc sort data=work_mapping;
-   by cust cint2_sdt delq_sdt delq_edt;
+proc sort data=work_step2;
+   by cust cint2_sdt delq_sdt;
 run;
 
-/* Step 4: Process to create continuous periods */
+/* Step 4: Create continuous periods */
 data cint_periods;
-   set work_mapping;
-   by cust cint2_sdt;
+   set work_step2;
+   by cust;
    
-   /* Variables to track the current period */
-   retain period_start period_end period_num;
+   /* Track the current continuous period */
+   retain period_start period_end;
    format period_start period_end date9.;
    
-   /* Initialize for each customer */
-   if first.cust then period_num = 0;
-   
-   /* Start a new period for each cint start date */
-   if first.cint2_sdt then do;
-      /* Check if this cint start date falls within the previous period */
-      if period_num > 0 and cint2_sdt <= period_end then do;
-         /* This cint start date is part of the previous period */
-         /* Keep the existing period going, just update delq periods if needed */
+   /* Initialize for first record of each customer */
+   if first.cust then do;
+      period_start = cint2_sdt;
+      period_end = delq_edt + 60;
+   end;
+   else do;
+      /* Check if this record continues the current period */
+      if delq_sdt <= period_end then do;
+         /* Extend the current period if needed */
          period_end = max(period_end, delq_edt + 60);
       end;
       else do;
-         /* This is a new period */
-         /* Output the previous period if it exists */
-         if period_num > 0 then do;
-            output;
-         end;
-         period_num + 1;
+         /* Output the completed period and start a new one */
+         cint2_sdt = period_start;
+         cint2_edt = period_end;
+         output;
          period_start = cint2_sdt;
          period_end = delq_edt + 60;
       end;
    end;
-   else do;
-      /* Continue with the current period, checking for overlap */
-      if delq_sdt <= period_end then do;
-         /* This delinquency period overlaps with our current period */
-         period_end = max(period_end, delq_edt + 60);
-      end;
-   end;
    
-   /* Output the last period for each customer */
+   /* Output the final period for each customer */
    if last.cust then do;
+      cint2_sdt = period_start;
+      cint2_edt = period_end;
       output;
    end;
    
-   /* Keep and rename relevant variables */
-   keep cust period_start period_end period_num;
-   rename period_start=cint2_sdt period_end=cint2_edt;
+   keep cust cint2_sdt cint2_edt;
 run;
